@@ -13,3 +13,6 @@ inputs:
 runs:
   using: 'node20'
   main: 'dist/sync-teams.js'
+branding:
+  icon: 'users'
+  color: 'blue'
