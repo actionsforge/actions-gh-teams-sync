@@ -1,4 +1,4 @@
-name: 'GitHub Team Sync'
+name: 'GitHub Teams Sync'
 description: 'Sync GitHub organization teams from a declarative YAML file'
 author: 'John Ajera'
 inputs:
