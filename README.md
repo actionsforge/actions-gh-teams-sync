@@ -1,6 +1,6 @@
 # 🚀 GitHub Team Sync Action
 
-![ci](https://github.com/actionsforge/gh-team-sync/actions/workflows/ci.yml/badge.svg)
+![ci](https://github.com/actionsforge/actions-gh-team-sync/actions/workflows/ci.yml/badge.svg)
 
 Sync your GitHub organization teams from a declarative YAML configuration using the GitHub API.
 
