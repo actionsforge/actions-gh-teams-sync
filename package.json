@@ -1,0 +1,34 @@
+{
+  "name": "gh-team-sync",
+  "version": "1.0.0",
+  "description": "GitHub Action to sync organization teams from a declarative YAML configuration using the GitHub API",
+  "main": "dist/sync-teams.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/sync-teams.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@actions/core": "^1.10.0",
+    "@actions/github": "^6.0.0",
+    "@octokit/rest": "^20.0.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.14.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "vitest": "^3.1.1"
+  },
+  "keywords": [
+    "github",
+    "teams",
+    "sync",
+    "automation",
+    "actions"
+  ],
+  "author": "John Ajera",
+  "license": "MIT"
+}

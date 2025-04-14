@@ -1,0 +1,15 @@
+name: 'GitHub Team Sync'
+description: 'Sync GitHub organization teams from a declarative YAML file'
+author: 'John Ajera'
+inputs:
+  config-path:
+    description: 'Path to the YAML config file'
+    required: false
+    default: '.github/teams.yaml'
+  dry-run:
+    description: 'Run without making changes'
+    required: false
+    default: 'false'
+runs:
+  using: 'node20'
+  main: 'dist/sync-teams.js'

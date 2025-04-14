@@ -1,0 +1,55 @@
+name: Sync GitHub Teams
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Simulate without making changes"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      config-path:
+        description: "Path to the teams YAML file"
+        required: false
+        default: ".github/teams.yaml"
+
+  push:
+    branches:
+      - main
+    paths:
+      - '**/teams.yaml'
+      - 'scripts/**'
+
+jobs:
+  sync:
+    name: Run team sync script
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🛠 Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🧱 Compile TypeScript
+        run: npx tsc
+
+      - name: 🔁 Execute team sync
+        run: |
+          node dist/sync-teams.js \
+            --config "${{ github.event.inputs.config-path || '.github/teams.yaml' }}" \
+            --dry-run "${{ github.event.inputs.dry-run || 'false' }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
