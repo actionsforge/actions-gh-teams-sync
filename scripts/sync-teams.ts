@@ -91,6 +91,5 @@ if (require.main === module) {
   const configPath = process.env.INPUT_CONFIG_PATH || ".github/teams.yaml";
   const dryRun = process.env.INPUT_DRY_RUN === "true";
 
-
   syncTeams(configPath, dryRun).catch(err => core.setFailed(err.message));
 }
