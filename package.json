@@ -5,8 +5,7 @@
   "main": "dist/sync-teams.js",
   "type": "module",
   "scripts": {
-    "build": "tsup scripts/sync-teams.ts --format esm --out-dir dist"
-,
+    "build": "tsup",
     "start": "node dist/sync-teams.js",
     "test": "vitest run",
     "prepare": "npm run build"
