@@ -43,8 +43,12 @@ jobs:
       - name: 📦 Install dependencies
         run: npm ci
 
-      - name: 🧱 Compile TypeScript
-        run: npx tsc
+      - name: 🧱 Ensure action is built
+        run: |
+          if [ ! -f dist/sync-teams.js ]; then
+            echo "❌ dist/sync-teams.js not found. Did you forget to build?"
+            exit 1
+          fi
 
       - name: 🔁 Execute team sync
         run: |
