@@ -1,13 +1,15 @@
 {
-  "name": "gh-team-sync",
+  "name": "actions-gh-teams-sync",
   "version": "1.0.0",
   "description": "GitHub Action to sync organization teams from a declarative YAML configuration using the GitHub API",
   "main": "dist/sync-teams.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsup scripts/sync-teams.ts --format esm --out-dir dist"
+,
     "start": "node dist/sync-teams.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@actions/core": "^1.10.0",
@@ -19,6 +21,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.14.1",
     "ts-node": "^10.9.2",
+    "tsup": "^8.4.0",
     "typescript": "^5.3.3",
     "vitest": "^3.1.1"
   },
