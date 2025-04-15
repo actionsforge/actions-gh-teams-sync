@@ -1,6 +1,8 @@
-# 🚀 GitHub Team Sync Action
+# 🚀 GitHub Team Sync
 
-![ci](https://github.com/actionsforge/actions-gh-team-sync/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/actionsforge/actions-gh-teams-sync/actions/workflows/ci.yml/badge.svg)
+
+[![Build, Commit, Tag & Release](https://github.com/actionsforge/actions-gh-teams-sync/actions/workflows/build-and-tag.yml/badge.svg)](https://github.com/actionsforge/actions-gh-teams-sync/actions/workflows/build-and-tag.yml)
 
 Sync your GitHub organization teams from a declarative YAML configuration using the GitHub API.
 
@@ -18,7 +20,7 @@ Sync your GitHub organization teams from a declarative YAML configuration using 
 ## 📦 Usage (as a GitHub Action)
 
 ```yaml
-- uses: actionsforge/gh-team-sync@v1
+- uses: actionsforge/actions-gh-teams-sync@v1
   with:
     config-path: .github/teams.yaml
     dry-run: false
@@ -30,16 +32,17 @@ Sync your GitHub organization teams from a declarative YAML configuration using 
 
 ## 🔧 Inputs
 
-| Name          | Description                             | Required | Default                |
-|---------------|------------------------------------------|----------|------------------------|
-| `config-path` | Path to the YAML config file             | No       | `.github/teams.yaml`   |
-| `dry-run`     | Show what would happen without changes   | No       | `false`                |
+| Name          | Description                                           | Required | Default                |
+|---------------|--------------------------------------------------------|----------|------------------------|
+| `config-path` | Relative path to the YAML configuration file           | No       | `.github/teams.yaml`   |
+| `dry-run`     | If true, prints planned changes without applying them | No       | `false`                |
 
 ---
 
 ## 📄 Sample `teams.yaml`
 
 ```yaml
+# .github/teams.yaml
 teams:
   - name: platform-team
     description: Platform engineers responsible for CI/CD and infrastructure
@@ -64,32 +67,23 @@ teams:
 
 ---
 
-## 🧪 Local Testing
+## 🦪 Local Testing (CLI)
 
 ```bash
-export GITHUB_TOKEN=ghp_...
-export GITHUB_REPOSITORY=your-org/your-repo
-node dist/sync-teams.js --config .github/teams.yaml --dry-run
+# Dry run
+GITHUB_TOKEN=ghp_... node dist/sync-teams.js --config .github/teams.yaml --dry-run
+
+# Apply changes
+GITHUB_TOKEN=ghp_... node dist/sync-teams.js --config .github/teams.yaml
 ```
-
----
-
-## 🧪 Run Unit Tests
-
-```bash
-npm install
-npm run build
-npm test
-```
-
-Tests are powered by [Vitest](https://vitest.dev) and include GitHub API mocking.
 
 ---
 
 ## 🔒 Permissions
 
-To manage organization teams, use a token with `admin:org` scope.
-The default `GITHUB_TOKEN` only works in org-owned repos with the correct permissions.
+To manage organization teams, use a token with the `admin:org` scope.
+The default `GITHUB_TOKEN` only works in organization-owned repositories with appropriate permissions:
+<https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token>
 
 ---
 
