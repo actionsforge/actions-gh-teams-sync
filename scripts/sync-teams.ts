@@ -80,16 +80,27 @@ export async function syncTeams(configPath: string, dryRun: boolean) {
   }
 }
 
-// CLI entrypoint
 if (require.main === module) {
-  const args = process.argv.slice(2);
-  const getArg = (flag: string, fallback: string = ""): string => {
-    const index = args.indexOf(flag);
-    return index !== -1 && args[index + 1] ? args[index + 1] : fallback;
-  };
+  const isGitHubAction = !!process.env.GITHUB_ACTION;
 
-  const configPath = process.env.INPUT_CONFIG_PATH || ".github/teams.yaml";
-  const dryRun = process.env.INPUT_DRY_RUN === "true";
+  let configPath: string;
+  let dryRun: boolean;
+
+  if (isGitHubAction) {
+    // Running as GitHub Action
+    configPath = core.getInput("config-path") || ".github/teams.yaml";
+    dryRun = core.getInput("dry-run") === "true";
+  } else {
+    // Running locally via CLI
+    const args = process.argv.slice(2);
+    const getArg = (flag: string, fallback: string = ""): string => {
+      const index = args.indexOf(flag);
+      return index !== -1 && args[index + 1] ? args[index + 1] : fallback;
+    };
+
+    configPath = getArg("--config", ".github/teams.yaml");
+    dryRun = getArg("--dry-run", "false") === "true";
+  }
 
   syncTeams(configPath, dryRun).catch(err => core.setFailed(err.message));
 }
