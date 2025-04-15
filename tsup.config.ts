@@ -9,5 +9,5 @@ export default defineConfig({
   dts: false,
   minify: false,
   sourcemap: false,
-  noExternal: ['@actions/core', '@actions/github']
+  noExternal: ['@actions/core', '@actions/github', 'js-yaml']
 });
