@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "GitHub Action to sync organization teams from a declarative YAML configuration using the GitHub API",
   "main": "dist/sync-teams.js",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "build": "tsup",
     "start": "node dist/sync-teams.js",
@@ -17,6 +17,7 @@
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.14.1",
     "ts-node": "^10.9.2",
