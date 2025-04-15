@@ -19691,7 +19691,7 @@ var require_core = __commonJS({
       process.env["PATH"] = `${inputPath}${path.delimiter}${process.env["PATH"]}`;
     }
     exports2.addPath = addPath;
-    function getInput(name, options) {
+    function getInput2(name, options) {
       const val = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] || "";
       if (options && options.required && !val) {
         throw new Error(`Input required and not supplied: ${name}`);
@@ -19701,9 +19701,9 @@ var require_core = __commonJS({
       }
       return val.trim();
     }
-    exports2.getInput = getInput;
+    exports2.getInput = getInput2;
     function getMultilineInput(name, options) {
-      const inputs = getInput(name, options).split("\n").filter((x) => x !== "");
+      const inputs = getInput2(name, options).split("\n").filter((x) => x !== "");
       if (options && options.trimWhitespace === false) {
         return inputs;
       }
@@ -19713,7 +19713,7 @@ var require_core = __commonJS({
     function getBooleanInput(name, options) {
       const trueValue = ["true", "True", "TRUE"];
       const falseValue = ["false", "False", "FALSE"];
-      const val = getInput(name, options);
+      const val = getInput2(name, options);
       if (trueValue.includes(val))
         return true;
       if (falseValue.includes(val))
@@ -28964,13 +28964,21 @@ async function syncTeams(configPath, dryRun) {
   }
 }
 if (require.main === module) {
-  const args = import_process.default.argv.slice(2);
-  const getArg = (flag, fallback = "") => {
-    const index = args.indexOf(flag);
-    return index !== -1 && args[index + 1] ? args[index + 1] : fallback;
-  };
-  const configPath = import_process.default.env.INPUT_CONFIG_PATH || ".github/teams.yaml";
-  const dryRun = import_process.default.env.INPUT_DRY_RUN === "true";
+  const isGitHubAction = !!import_process.default.env.GITHUB_ACTION;
+  let configPath;
+  let dryRun;
+  if (isGitHubAction) {
+    configPath = core2.getInput("config-path") || ".github/teams.yaml";
+    dryRun = core2.getInput("dry-run") === "true";
+  } else {
+    const args = import_process.default.argv.slice(2);
+    const getArg = (flag, fallback = "") => {
+      const index = args.indexOf(flag);
+      return index !== -1 && args[index + 1] ? args[index + 1] : fallback;
+    };
+    configPath = getArg("--config", ".github/teams.yaml");
+    dryRun = getArg("--dry-run", "false") === "true";
+  }
   syncTeams(configPath, dryRun).catch((err) => core2.setFailed(err.message));
 }
 // Annotate the CommonJS export names for ESM import in node:
