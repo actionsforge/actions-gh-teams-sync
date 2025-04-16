@@ -23,19 +23,25 @@ type TeamsConfig = {
   teams: TeamSpec[];
 };
 
-export async function syncTeams(configPath: string, dryRun: boolean, org: string) {
+function getErrorStatus(err: unknown): number | undefined {
+  if (err && typeof err === "object" && "status" in err) {
+    return (err as { status: number }).status;
+  }
+  return undefined;
+}
+
+export async function syncTeams(configPath: string, dryRun: boolean, org: string): Promise<void> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("Missing GITHUB_TOKEN");
 
   const octokit = new Octokit({ auth: token });
 
   core.info(`📄 Using config: ${configPath}`);
-  if (dryRun) core.info("🚫 Dry-run mode enabled. No changes will be made.");
+  core.info(`🚫 Dry-run mode: ${dryRun}`);
   core.info(`🏛 Operating in org: ${org}`);
 
   const config = yaml.load(readFileSync(configPath, "utf8")) as TeamsConfig;
 
-  // Get all existing teams
   const existingTeams = new Map<string, number>();
   for await (const response of octokit.paginate.iterator(octokit.teams.list, {
     org,
@@ -57,9 +63,13 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
     let exists = true;
     try {
       await octokit.teams.getByName({ org, team_slug: slug });
-    } catch (err: any) {
-      if (err.status === 404) exists = false;
-      else throw err;
+    } catch (err: unknown) {
+      const status = getErrorStatus(err);
+      if (status === 404) {
+        exists = false;
+      } else {
+        throw err;
+      }
     }
 
     if (!exists) {
@@ -127,7 +137,7 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
   }
 
   // Remove teams that are no longer in the config
-  for (const [slug, teamId] of existingTeams) {
+  for (const [slug] of existingTeams) {
     if (!teamsToKeep.has(slug)) {
       if (dryRun) {
         core.info(`[DRY-RUN] Would remove team '${slug}'`);
@@ -138,8 +148,9 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
             org,
             team_slug: slug,
           });
-        } catch (err: any) {
-          if (err.status === 403) {
+        } catch (err: unknown) {
+          const status = getErrorStatus(err);
+          if (status === 403) {
             core.warning(`Cannot remove team '${slug}': Permission denied. The team might be protected.`);
           } else {
             throw err;

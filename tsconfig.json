@@ -4,11 +4,12 @@
     "module": "ES2020",
     "moduleResolution": "node",
     "outDir": "dist",
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
     "strict": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node", "jest", "istanbul-lib-coverage"]
+    "forceConsistentCasingInFileNames": true,
+    "types": ["vitest"]
   },
-  "include": ["scripts"]
+  "include": ["scripts/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
