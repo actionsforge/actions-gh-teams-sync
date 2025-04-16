@@ -18087,10 +18087,10 @@ var require_oidc_utils = __commonJS({
         return __awaiter(this, void 0, void 0, function* () {
           const httpclient = _OidcClient.createHttpClient();
           const res = yield httpclient.getJson(id_token_url).catch((error) => {
-            throw new Error(`Failed to get ID Token. 
- 
+            throw new Error(`Failed to get ID Token.
+
         Error Code : ${error.statusCode}
- 
+
         Error Message: ${error.message}`);
           });
           const id_token = (_a = res.result) === null || _a === void 0 ? void 0 : _a.value;
@@ -19692,6 +19692,7 @@ var require_core = __commonJS({
     }
     exports2.addPath = addPath;
     function getInput2(name, options) {
+    function getInput2(name, options) {
       const val = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] || "";
       if (options && options.required && !val) {
         throw new Error(`Input required and not supplied: ${name}`);
@@ -19702,7 +19703,9 @@ var require_core = __commonJS({
       return val.trim();
     }
     exports2.getInput = getInput2;
+    exports2.getInput = getInput2;
     function getMultilineInput(name, options) {
+      const inputs = getInput2(name, options).split("\n").filter((x) => x !== "");
       const inputs = getInput2(name, options).split("\n").filter((x) => x !== "");
       if (options && options.trimWhitespace === false) {
         return inputs;
@@ -19713,6 +19716,7 @@ var require_core = __commonJS({
     function getBooleanInput(name, options) {
       const trueValue = ["true", "True", "TRUE"];
       const falseValue = ["false", "False", "FALSE"];
+      const val = getInput2(name, options);
       const val = getInput2(name, options);
       if (trueValue.includes(val))
         return true;
@@ -28913,13 +28917,13 @@ var Octokit2 = Octokit.plugin(
 
 // scripts/sync-teams.ts
 var import_process = __toESM(require("process"));
-async function syncTeams(configPath, dryRun) {
+async function syncTeams(configPath, dryRun, org) {
   const token = import_process.default.env.GITHUB_TOKEN;
   if (!token) throw new Error("Missing GITHUB_TOKEN");
-  const org = github.context.repo.owner;
   const octokit = new Octokit2({ auth: token });
   core2.info(`\u{1F4C4} Using config: ${configPath}`);
   if (dryRun) core2.info("\u{1F6AB} Dry-run mode enabled. No changes will be made.");
+  core2.info(`\u{1F3DB} Operating in org: ${org}`);
   const config = js_yaml_default.load((0, import_fs.readFileSync)(configPath, "utf8"));
   for (const team of config.teams) {
     const slug = team.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -28967,19 +28971,48 @@ if (require.main === module) {
   const isGitHubAction = !!import_process.default.env.GITHUB_ACTION;
   let configPath;
   let dryRun;
+  let org;
   if (isGitHubAction) {
     configPath = core2.getInput("config-path") || ".github/teams.yaml";
-    dryRun = core2.getInput("dry-run") === "true";
+    dryRun = core2.getInput("dry-run").toLowerCase() === "true";
+    org = import_process.default.env.GITHUB_ORG || github.context.payload.organization?.login || github.context.repo.owner;
+    if (!org) {
+      core2.setFailed("\u274C No organization specified. Set GITHUB_ORG or ensure the action is running in an organization context.");
+      import_process.default.exit(1);
+    }
   } else {
     const args = import_process.default.argv.slice(2);
-    const getArg = (flag, fallback = "") => {
-      const index = args.indexOf(flag);
-      return index !== -1 && args[index + 1] ? args[index + 1] : fallback;
+    const parseArgs = () => {
+      const result = {};
+      for (let i = 0; i < args.length; i++) {
+        const current = args[i];
+        const next = args[i + 1];
+        if (current.startsWith("--")) {
+          if (current.includes("=")) {
+            const [flag, value] = current.split("=");
+            result[flag] = value;
+          } else if (!next || next.startsWith("--")) {
+            result[current] = true;
+          } else {
+            result[current] = next;
+            i++;
+          }
+        }
+      }
+      return result;
     };
-    configPath = getArg("--config", ".github/teams.yaml");
-    dryRun = getArg("--dry-run", "false") === "true";
+    const parsed = parseArgs();
+    configPath = parsed["--config"] || ".github/teams.yaml";
+    const dryRunValue = parsed["--dry-run"];
+    dryRun = dryRunValue === true || dryRunValue === "true" || dryRunValue === "" || typeof dryRunValue === "string" && dryRunValue.toLowerCase() === "true" || typeof dryRunValue === "string" && dryRunValue.toLowerCase() === "=true";
+    org = parsed["--org"] || import_process.default.env.GITHUB_ORG;
   }
-  syncTeams(configPath, dryRun).catch((err) => core2.setFailed(err.message));
+  if (!org) {
+    core2.setFailed("\u274C No organization specified. Set --org or GITHUB_ORG.");
+    import_process.default.exit(1);
+  }
+  core2.info(`\u{1F9EA} dryRun = ${dryRun}`);
+  syncTeams(configPath, dryRun, org).catch((err) => core2.setFailed(err.message));
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
