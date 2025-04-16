@@ -23,15 +23,15 @@ type TeamsConfig = {
   teams: TeamSpec[];
 };
 
-export async function syncTeams(configPath: string, dryRun: boolean) {
+export async function syncTeams(configPath: string, dryRun: boolean, org: string) {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("Missing GITHUB_TOKEN");
 
-  const org = github.context.repo.owner;
   const octokit = new Octokit({ auth: token });
 
   core.info(`📄 Using config: ${configPath}`);
   if (dryRun) core.info("🚫 Dry-run mode enabled. No changes will be made.");
+  core.info(`🏛 Operating in org: ${org}`);
 
   const config = yaml.load(readFileSync(configPath, "utf8")) as TeamsConfig;
 
@@ -80,27 +80,68 @@ export async function syncTeams(configPath: string, dryRun: boolean) {
   }
 }
 
+// CLI & GitHub Action entrypoint
 if (require.main === module) {
   const isGitHubAction = !!process.env.GITHUB_ACTION;
 
   let configPath: string;
   let dryRun: boolean;
+  let org: string | undefined;
 
   if (isGitHubAction) {
-    // Running as GitHub Action
     configPath = core.getInput("config-path") || ".github/teams.yaml";
-    dryRun = core.getInput("dry-run") === "true";
+    dryRun = core.getInput("dry-run").toLowerCase() === "true";
+
+    // Get organization from various sources
+    org = process.env.GITHUB_ORG ||
+         github.context.payload.organization?.login ||
+         github.context.repo.owner;
+
+    if (!org) {
+      core.setFailed("❌ No organization specified. Set GITHUB_ORG or ensure the action is running in an organization context.");
+      process.exit(1);
+    }
   } else {
-    // Running locally via CLI
     const args = process.argv.slice(2);
-    const getArg = (flag: string, fallback: string = ""): string => {
-      const index = args.indexOf(flag);
-      return index !== -1 && args[index + 1] ? args[index + 1] : fallback;
+
+    const parseArgs = (): Record<string, string | boolean> => {
+      const result: Record<string, string | boolean> = {};
+      for (let i = 0; i < args.length; i++) {
+        const current = args[i];
+        const next = args[i + 1];
+
+        if (current.startsWith("--")) {
+          if (current.includes("=")) {
+            const [flag, value] = current.split("=");
+            result[flag] = value;
+          } else if (!next || next.startsWith("--")) {
+            result[current] = true;
+          } else {
+            result[current] = next;
+            i++;
+          }
+        }
+      }
+      return result;
     };
 
-    configPath = getArg("--config", ".github/teams.yaml");
-    dryRun = getArg("--dry-run", "false") === "true";
+    const parsed = parseArgs();
+
+    configPath = (parsed["--config"] as string) || ".github/teams.yaml";
+    const dryRunValue = parsed["--dry-run"];
+    dryRun = dryRunValue === true ||
+             dryRunValue === "true" ||
+             dryRunValue === "" ||
+             (typeof dryRunValue === "string" && dryRunValue.toLowerCase() === "true") ||
+             (typeof dryRunValue === "string" && dryRunValue.toLowerCase() === "=true");
+    org = (parsed["--org"] as string) || process.env.GITHUB_ORG;
   }
 
-  syncTeams(configPath, dryRun).catch(err => core.setFailed(err.message));
+  if (!org) {
+    core.setFailed("❌ No organization specified. Set --org or GITHUB_ORG.");
+    process.exit(1);
+  }
+
+  core.info(`🧪 dryRun = ${dryRun}`);
+  syncTeams(configPath, dryRun, org).catch(err => core.setFailed(err.message));
 }

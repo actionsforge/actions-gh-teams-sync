@@ -6,11 +6,8 @@ on:
       dry-run:
         description: "Simulate without making changes"
         required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
+        default: false
+        type: boolean
       config-path:
         description: "Path to the teams YAML file"
         required: false
@@ -54,6 +51,6 @@ jobs:
         run: |
           node dist/sync-teams.js \
             --config "${{ github.event.inputs.config-path || '.github/teams.yaml' }}" \
-            --dry-run "${{ github.event.inputs.dry-run || 'false' }}"
+            --dry-run "${{ github.event.inputs.dry-run }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_ORG_TOKEN }}
