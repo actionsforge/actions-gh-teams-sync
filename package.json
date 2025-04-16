@@ -6,13 +6,18 @@
   "type": "commonjs",
   "scripts": {
     "build": "tsup",
-    "start": "node dist/sync-teams.js",
+    "dev": "tsup --watch",
     "test": "vitest run",
-    "lint": "eslint scripts/**/*.ts tests/**/*.ts",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.{ts,json,md}\"",
+    "start": "node dist/sync-teams.js",
     "prepare": "npm run build"
   },
   "dependencies": {
-    "@actions/core": "^1.10.0",
+    "@actions/core": "^1.11.1",
     "@actions/github": "^6.0.0",
     "@octokit/rest": "^20.0.0",
     "js-yaml": "^4.1.0"
@@ -24,6 +29,7 @@
     "@types/node": "^22.14.1",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "@vitest/coverage-v8": "^3.1.1",
     "eslint": "^8.56.0",
     "ts-node": "^10.9.2",
     "tsup": "^8.4.0",
