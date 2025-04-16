@@ -8,6 +8,7 @@
     "build": "tsup",
     "start": "node dist/sync-teams.js",
     "test": "vitest run",
+    "lint": "eslint scripts/**/*.ts tests/**/*.ts",
     "prepare": "npm run build"
   },
   "dependencies": {
@@ -21,6 +22,9 @@
     "@types/jest": "^29.5.14",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.14.1",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.56.0",
     "ts-node": "^10.9.2",
     "tsup": "^8.4.0",
     "typescript": "^5.3.3",

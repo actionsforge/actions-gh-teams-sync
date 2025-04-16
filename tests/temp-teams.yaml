@@ -1,3 +1,4 @@
 teams:
-  - name: test
-    description "missing colon"
+      - name: new-team
+        roles: []
+    

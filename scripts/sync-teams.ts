@@ -35,8 +35,23 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
 
   const config = yaml.load(readFileSync(configPath, "utf8")) as TeamsConfig;
 
+  // Get all existing teams
+  const existingTeams = new Map<string, number>();
+  for await (const response of octokit.paginate.iterator(octokit.teams.list, {
+    org,
+    per_page: 100,
+  })) {
+    for (const team of response.data) {
+      existingTeams.set(team.slug, team.id);
+    }
+  }
+
+  // Track teams that should exist
+  const teamsToKeep = new Set<string>();
+
   for (const team of config.teams) {
     const slug = team.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    teamsToKeep.add(slug);
     core.info(`\n=== Syncing team: ${team.name} ===`);
 
     let exists = true;
@@ -64,7 +79,23 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
       core.info(`Team '${team.name}' already exists`);
     }
 
+    // Get current team members
+    const currentMembers = new Set<string>();
+    for await (const response of octokit.paginate.iterator(octokit.teams.listMembersInOrg, {
+      org,
+      team_slug: slug,
+      per_page: 100,
+    })) {
+      for (const member of response.data) {
+        currentMembers.add(member.login);
+      }
+    }
+
+    // Track members that should be in the team
+    const membersToKeep = new Set<string>();
+
     for (const { username, role } of team.roles || []) {
+      membersToKeep.add(username);
       if (dryRun) {
         core.info(`[DRY-RUN] Would set ${role} '${username}'`);
       } else {
@@ -75,6 +106,45 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
           username,
           role,
         });
+      }
+    }
+
+    // Remove members that are no longer in the config
+    for (const member of currentMembers) {
+      if (!membersToKeep.has(member)) {
+        if (dryRun) {
+          core.info(`[DRY-RUN] Would remove member '${member}' from team '${team.name}'`);
+        } else {
+          core.info(`Removing member '${member}' from team '${team.name}'`);
+          await octokit.teams.removeMembershipForUserInOrg({
+            org,
+            team_slug: slug,
+            username: member,
+          });
+        }
+      }
+    }
+  }
+
+  // Remove teams that are no longer in the config
+  for (const [slug, teamId] of existingTeams) {
+    if (!teamsToKeep.has(slug)) {
+      if (dryRun) {
+        core.info(`[DRY-RUN] Would remove team '${slug}'`);
+      } else {
+        try {
+          core.info(`Removing team '${slug}'`);
+          await octokit.teams.deleteInOrg({
+            org,
+            team_slug: slug,
+          });
+        } catch (err: any) {
+          if (err.status === 403) {
+            core.warning(`Cannot remove team '${slug}': Permission denied. The team might be protected.`);
+          } else {
+            throw err;
+          }
+        }
       }
     }
   }

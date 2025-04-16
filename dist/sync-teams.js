@@ -19752,10 +19752,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       (0, command_1.issueCommand)("error", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports2.error = error;
-    function warning(message, properties = {}) {
+    function warning2(message, properties = {}) {
       (0, command_1.issueCommand)("warning", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
-    exports2.warning = warning;
+    exports2.warning = warning2;
     function notice(message, properties = {}) {
       (0, command_1.issueCommand)("notice", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
@@ -28921,8 +28921,19 @@ async function syncTeams(configPath, dryRun, org) {
   if (dryRun) core2.info("\u{1F6AB} Dry-run mode enabled. No changes will be made.");
   core2.info(`\u{1F3DB} Operating in org: ${org}`);
   const config = js_yaml_default.load((0, import_fs.readFileSync)(configPath, "utf8"));
+  const existingTeams = /* @__PURE__ */ new Map();
+  for await (const response of octokit.paginate.iterator(octokit.teams.list, {
+    org,
+    per_page: 100
+  })) {
+    for (const team of response.data) {
+      existingTeams.set(team.slug, team.id);
+    }
+  }
+  const teamsToKeep = /* @__PURE__ */ new Set();
   for (const team of config.teams) {
     const slug = team.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    teamsToKeep.add(slug);
     core2.info(`
 === Syncing team: ${team.name} ===`);
     let exists = true;
@@ -28948,7 +28959,19 @@ async function syncTeams(configPath, dryRun, org) {
     } else {
       core2.info(`Team '${team.name}' already exists`);
     }
+    const currentMembers = /* @__PURE__ */ new Set();
+    for await (const response of octokit.paginate.iterator(octokit.teams.listMembersInOrg, {
+      org,
+      team_slug: slug,
+      per_page: 100
+    })) {
+      for (const member of response.data) {
+        currentMembers.add(member.login);
+      }
+    }
+    const membersToKeep = /* @__PURE__ */ new Set();
     for (const { username, role } of team.roles || []) {
+      membersToKeep.add(username);
       if (dryRun) {
         core2.info(`[DRY-RUN] Would set ${role} '${username}'`);
       } else {
@@ -28959,6 +28982,41 @@ async function syncTeams(configPath, dryRun, org) {
           username,
           role
         });
+      }
+    }
+    for (const member of currentMembers) {
+      if (!membersToKeep.has(member)) {
+        if (dryRun) {
+          core2.info(`[DRY-RUN] Would remove member '${member}' from team '${team.name}'`);
+        } else {
+          core2.info(`Removing member '${member}' from team '${team.name}'`);
+          await octokit.teams.removeMembershipForUserInOrg({
+            org,
+            team_slug: slug,
+            username: member
+          });
+        }
+      }
+    }
+  }
+  for (const [slug, teamId] of existingTeams) {
+    if (!teamsToKeep.has(slug)) {
+      if (dryRun) {
+        core2.info(`[DRY-RUN] Would remove team '${slug}'`);
+      } else {
+        try {
+          core2.info(`Removing team '${slug}'`);
+          await octokit.teams.deleteInOrg({
+            org,
+            team_slug: slug
+          });
+        } catch (err) {
+          if (err.status === 403) {
+            core2.warning(`Cannot remove team '${slug}': Permission denied. The team might be protected.`);
+          } else {
+            throw err;
+          }
+        }
       }
     }
   }

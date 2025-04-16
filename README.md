@@ -71,10 +71,14 @@ teams:
 
 ```bash
 # Dry run
-GITHUB_TOKEN=ghp_... node dist/sync-teams.js --config .github/teams.yaml --dry-run
+GITHUB_TOKEN=ghp_... \
+GITHUB_ORG=cloudbuildlab \
+node dist/sync-teams.js --config .github/teams.yaml --dry-run
 
 # Apply changes
-GITHUB_TOKEN=ghp_... node dist/sync-teams.js --config .github/teams.yaml
+GITHUB_TOKEN=ghp_... \
+GITHUB_ORG=cloudbuildlab \
+node dist/sync-teams.js --config .github/teams.yaml
 ```
 
 ---
@@ -82,8 +86,7 @@ GITHUB_TOKEN=ghp_... node dist/sync-teams.js --config .github/teams.yaml
 ## 🔒 Permissions
 
 To manage organization teams, use a token with the `admin:org` scope.
-The default `GITHUB_TOKEN` only works in organization-owned repositories with appropriate permissions:
-<https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token>
+The default `GITHUB_TOKEN` only works in **organization-owned** repositories and must have the `admin:org` scope enabled via workflow permissions. <https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token>
 
 ---
 
