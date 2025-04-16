@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      organization: write
       id-token: write
 
     steps:
@@ -53,4 +54,4 @@ jobs:
             --config "${{ github.event.inputs.config-path || '.github/teams.yaml' }}" \
             --dry-run "${{ github.event.inputs.dry-run }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_ORG_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
