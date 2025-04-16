@@ -28913,12 +28913,18 @@ var Octokit2 = Octokit.plugin(
 
 // scripts/sync-teams.ts
 var import_process = __toESM(require("process"));
+function getErrorStatus(err) {
+  if (err && typeof err === "object" && "status" in err) {
+    return err.status;
+  }
+  return void 0;
+}
 async function syncTeams(configPath, dryRun, org) {
   const token = import_process.default.env.GITHUB_TOKEN;
   if (!token) throw new Error("Missing GITHUB_TOKEN");
   const octokit = new Octokit2({ auth: token });
   core2.info(`\u{1F4C4} Using config: ${configPath}`);
-  if (dryRun) core2.info("\u{1F6AB} Dry-run mode enabled. No changes will be made.");
+  core2.info(`\u{1F6AB} Dry-run mode: ${dryRun}`);
   core2.info(`\u{1F3DB} Operating in org: ${org}`);
   const config = js_yaml_default.load((0, import_fs.readFileSync)(configPath, "utf8"));
   const existingTeams = /* @__PURE__ */ new Map();
@@ -28940,8 +28946,12 @@ async function syncTeams(configPath, dryRun, org) {
     try {
       await octokit.teams.getByName({ org, team_slug: slug });
     } catch (err) {
-      if (err.status === 404) exists = false;
-      else throw err;
+      const status = getErrorStatus(err);
+      if (status === 404) {
+        exists = false;
+      } else {
+        throw err;
+      }
     }
     if (!exists) {
       if (dryRun) {
@@ -28999,7 +29009,7 @@ async function syncTeams(configPath, dryRun, org) {
       }
     }
   }
-  for (const [slug, teamId] of existingTeams) {
+  for (const [slug] of existingTeams) {
     if (!teamsToKeep.has(slug)) {
       if (dryRun) {
         core2.info(`[DRY-RUN] Would remove team '${slug}'`);
@@ -29011,7 +29021,8 @@ async function syncTeams(configPath, dryRun, org) {
             team_slug: slug
           });
         } catch (err) {
-          if (err.status === 403) {
+          const status = getErrorStatus(err);
+          if (status === 403) {
             core2.warning(`Cannot remove team '${slug}': Permission denied. The team might be protected.`);
           } else {
             throw err;
