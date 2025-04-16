@@ -19,10 +19,74 @@ on:
     paths:
       - '**/teams.yaml'
       - 'scripts/**'
+      - '.github/workflows/**'
+      - 'package.json'
+      - 'tsconfig.json'
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/teams.yaml'
+      - 'scripts/**'
+      - '.github/workflows/**'
+      - 'package.json'
+      - 'tsconfig.json'
 
 jobs:
+  validate:
+    name: Validate configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🛠 Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Lint TypeScript
+        run: npm run lint
+
+      - name: 🧪 Run tests
+        run: npm test
+
+      - name: 🔒 Security audit
+        run: npm audit
+
+      - name: 📝 Validate teams config
+        run: |
+          if [ ! -f "${{ github.event.inputs.config-path || '.github/teams.yaml' }}" ]; then
+            echo "❌ Teams config file not found"
+            exit 1
+          fi
+          node -e "
+            const yaml = require('js-yaml');
+            const fs = require('fs');
+            const config = yaml.load(fs.readFileSync('${{ github.event.inputs.config-path || '.github/teams.yaml' }}', 'utf8'));
+            if (!config.teams || !Array.isArray(config.teams)) {
+              console.error('❌ Invalid teams config: teams must be an array');
+              process.exit(1);
+            }
+            for (const team of config.teams) {
+              if (!team.name) {
+                console.error('❌ Invalid team config: name is required');
+                process.exit(1);
+              }
+              if (team.roles && !Array.isArray(team.roles)) {
+                console.error('❌ Invalid team config: roles must be an array');
+                process.exit(1);
+              }
+            }
+          "
+
   sync:
     name: Run team sync script
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read

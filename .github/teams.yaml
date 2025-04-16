@@ -1,1 +1,5 @@
-teams: []
+teams:
+  - name: platform-team
+    description: Platform engineers responsible for CI/CD and infrastructure
+    privacy: closed
+    roles: []
