@@ -103,6 +103,13 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
     if (!exists) {
       if (dryRun) {
         core.info(`[DRY-RUN] Would create team '${team.name}'`);
+        // In dry-run mode, if team doesn't exist, skip member operations
+        if (team.roles && team.roles.length > 0) {
+          for (const { username, role } of team.roles) {
+            core.info(`[DRY-RUN] Would add ${role} '${username}' to new team`);
+          }
+        }
+        continue;
       } else {
         core.info(`Creating team '${team.name}'`);
         await octokit.teams.create({
@@ -118,48 +125,61 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
       core.info(`Team '${team.name}' already exists`);
     }
 
-    // Get current team members
-    const currentMembers = new Set<string>();
-    for await (const response of octokit.paginate.iterator(octokit.teams.listMembersInOrg, {
-      org,
-      team_slug: slug,
-      per_page: 100,
-    })) {
-      for (const member of response.data) {
-        currentMembers.add(member.login);
-      }
-    }
-
-    // Track members that should be in the team
-    const membersToKeep = new Set<string>();
-
-    for (const { username, role } of team.roles || []) {
-      membersToKeep.add(username);
-      if (dryRun) {
-        core.info(`[DRY-RUN] Would set ${role} '${username}'`);
-      } else {
-        core.info(`Setting ${role} '${username}'`);
-        await octokit.teams.addOrUpdateMembershipForUserInOrg({
+    // Only proceed with member operations if team exists or we're not in dry-run mode
+    if (exists || !dryRun) {
+      // Get current team members
+      const currentMembers = new Set<string>();
+      try {
+        for await (const response of octokit.paginate.iterator(octokit.teams.listMembersInOrg, {
           org,
           team_slug: slug,
-          username,
-          role,
-        });
-      }
-    }
+          per_page: 100,
+        })) {
+          for (const member of response.data) {
+            currentMembers.add(member.login);
+          }
+        }
 
-    // Remove members that are no longer in the config
-    for (const member of currentMembers) {
-      if (!membersToKeep.has(member)) {
-        if (dryRun) {
-          core.info(`[DRY-RUN] Would remove member '${member}' from team '${team.name}'`);
+        // Track members that should be in the team
+        const membersToKeep = new Set<string>();
+
+        for (const { username, role } of team.roles || []) {
+          membersToKeep.add(username);
+          if (dryRun) {
+            core.info(`[DRY-RUN] Would set ${role} '${username}'`);
+          } else {
+            core.info(`Setting ${role} '${username}'`);
+            await octokit.teams.addOrUpdateMembershipForUserInOrg({
+              org,
+              team_slug: slug,
+              username,
+              role,
+            });
+          }
+        }
+
+        // Remove members that are no longer in the config
+        for (const member of currentMembers) {
+          if (!membersToKeep.has(member)) {
+            if (dryRun) {
+              core.info(`[DRY-RUN] Would remove member '${member}' from team '${team.name}'`);
+            } else {
+              core.info(`Removing member '${member}' from team '${team.name}'`);
+              await octokit.teams.removeMembershipForUserInOrg({
+                org,
+                team_slug: slug,
+                username: member,
+              });
+            }
+          }
+        }
+      } catch (err: unknown) {
+        const status = getErrorStatus(err);
+        if (status === 404 && dryRun) {
+          // In dry-run mode, ignore 404 errors when listing members
+          core.info(`[DRY-RUN] Team does not exist yet, skipping member operations`);
         } else {
-          core.info(`Removing member '${member}' from team '${team.name}'`);
-          await octokit.teams.removeMembershipForUserInOrg({
-            org,
-            team_slug: slug,
-            username: member,
-          });
+          throw err;
         }
       }
     }

@@ -28976,6 +28976,12 @@ async function syncTeams(configPath, dryRun, org) {
     if (!exists) {
       if (dryRun) {
         core2.info(`[DRY-RUN] Would create team '${team.name}'`);
+        if (team.roles && team.roles.length > 0) {
+          for (const { username, role } of team.roles) {
+            core2.info(`[DRY-RUN] Would add ${role} '${username}' to new team`);
+          }
+        }
+        continue;
       } else {
         core2.info(`Creating team '${team.name}'`);
         await octokit.teams.create({
@@ -28990,42 +28996,53 @@ async function syncTeams(configPath, dryRun, org) {
     } else {
       core2.info(`Team '${team.name}' already exists`);
     }
-    const currentMembers = /* @__PURE__ */ new Set();
-    for await (const response of octokit.paginate.iterator(octokit.teams.listMembersInOrg, {
-      org,
-      team_slug: slug,
-      per_page: 100
-    })) {
-      for (const member of response.data) {
-        currentMembers.add(member.login);
-      }
-    }
-    const membersToKeep = /* @__PURE__ */ new Set();
-    for (const { username, role } of team.roles || []) {
-      membersToKeep.add(username);
-      if (dryRun) {
-        core2.info(`[DRY-RUN] Would set ${role} '${username}'`);
-      } else {
-        core2.info(`Setting ${role} '${username}'`);
-        await octokit.teams.addOrUpdateMembershipForUserInOrg({
+    if (exists || !dryRun) {
+      const currentMembers = /* @__PURE__ */ new Set();
+      try {
+        for await (const response of octokit.paginate.iterator(octokit.teams.listMembersInOrg, {
           org,
           team_slug: slug,
-          username,
-          role
-        });
-      }
-    }
-    for (const member of currentMembers) {
-      if (!membersToKeep.has(member)) {
-        if (dryRun) {
-          core2.info(`[DRY-RUN] Would remove member '${member}' from team '${team.name}'`);
+          per_page: 100
+        })) {
+          for (const member of response.data) {
+            currentMembers.add(member.login);
+          }
+        }
+        const membersToKeep = /* @__PURE__ */ new Set();
+        for (const { username, role } of team.roles || []) {
+          membersToKeep.add(username);
+          if (dryRun) {
+            core2.info(`[DRY-RUN] Would set ${role} '${username}'`);
+          } else {
+            core2.info(`Setting ${role} '${username}'`);
+            await octokit.teams.addOrUpdateMembershipForUserInOrg({
+              org,
+              team_slug: slug,
+              username,
+              role
+            });
+          }
+        }
+        for (const member of currentMembers) {
+          if (!membersToKeep.has(member)) {
+            if (dryRun) {
+              core2.info(`[DRY-RUN] Would remove member '${member}' from team '${team.name}'`);
+            } else {
+              core2.info(`Removing member '${member}' from team '${team.name}'`);
+              await octokit.teams.removeMembershipForUserInOrg({
+                org,
+                team_slug: slug,
+                username: member
+              });
+            }
+          }
+        }
+      } catch (err) {
+        const status = getErrorStatus(err);
+        if (status === 404 && dryRun) {
+          core2.info(`[DRY-RUN] Team does not exist yet, skipping member operations`);
         } else {
-          core2.info(`Removing member '${member}' from team '${team.name}'`);
-          await octokit.teams.removeMembershipForUserInOrg({
-            org,
-            team_slug: slug,
-            username: member
-          });
+          throw err;
         }
       }
     }
