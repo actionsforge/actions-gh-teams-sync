@@ -23930,6 +23930,9 @@ var require_github = __commonJS({
 // scripts/sync-teams.ts
 var sync_teams_exports = {};
 __export(sync_teams_exports, {
+  parseCliArgs: () => parseCliArgs,
+  parseDryRun: () => parseDryRun,
+  runEntrypoint: () => runEntrypoint,
   syncTeams: () => syncTeams
 });
 module.exports = __toCommonJS(sync_teams_exports);
@@ -28913,13 +28916,36 @@ var Octokit2 = Octokit.plugin(
 
 // scripts/sync-teams.ts
 var import_process = __toESM(require("process"));
+function getErrorStatus(err) {
+  if (err && typeof err === "object" && "status" in err) {
+    return err.status;
+  }
+  return void 0;
+}
+async function verifyTokenPermissions(octokit, org) {
+  try {
+    await octokit.orgs.get({ org });
+  } catch (err) {
+    if (getErrorStatus(err) === 404) {
+      throw new Error(`Organization '${org}' not found or token lacks access`);
+    }
+    if (getErrorStatus(err) === 403) {
+      throw new Error("Token lacks required permissions. Please ensure it has admin:org scope.");
+    }
+    throw err;
+  }
+}
 async function syncTeams(configPath, dryRun, org) {
   const token = import_process.default.env.GITHUB_TOKEN;
   if (!token) throw new Error("Missing GITHUB_TOKEN");
   const octokit = new Octokit2({ auth: token });
+  await verifyTokenPermissions(octokit, org);
   core2.info(`\u{1F4C4} Using config: ${configPath}`);
-  if (dryRun) core2.info("\u{1F6AB} Dry-run mode enabled. No changes will be made.");
+  core2.info(`\u{1F6AB} Dry-run mode: ${dryRun}`);
   core2.info(`\u{1F3DB} Operating in org: ${org}`);
+  if (!(0, import_fs.existsSync)(configPath)) {
+    throw new Error(`Config file not found at: ${configPath}`);
+  }
   const config = js_yaml_default.load((0, import_fs.readFileSync)(configPath, "utf8"));
   const existingTeams = /* @__PURE__ */ new Map();
   for await (const response of octokit.paginate.iterator(octokit.teams.list, {
@@ -28940,8 +28966,12 @@ async function syncTeams(configPath, dryRun, org) {
     try {
       await octokit.teams.getByName({ org, team_slug: slug });
     } catch (err) {
-      if (err.status === 404) exists = false;
-      else throw err;
+      const status = getErrorStatus(err);
+      if (status === 404) {
+        exists = false;
+      } else {
+        throw err;
+      }
     }
     if (!exists) {
       if (dryRun) {
@@ -28953,7 +28983,8 @@ async function syncTeams(configPath, dryRun, org) {
           name: team.name,
           description: team.description,
           privacy: team.privacy || "closed",
-          parent_team_id: team.parent_team_id || void 0
+          parent_team_id: team.parent_team_id || void 0,
+          create_default_maintainer: team.create_default_maintainer || false
         });
       }
     } else {
@@ -28999,7 +29030,7 @@ async function syncTeams(configPath, dryRun, org) {
       }
     }
   }
-  for (const [slug, teamId] of existingTeams) {
+  for (const [slug] of existingTeams) {
     if (!teamsToKeep.has(slug)) {
       if (dryRun) {
         core2.info(`[DRY-RUN] Would remove team '${slug}'`);
@@ -29011,7 +29042,8 @@ async function syncTeams(configPath, dryRun, org) {
             team_slug: slug
           });
         } catch (err) {
-          if (err.status === 403) {
+          const status = getErrorStatus(err);
+          if (status === 403) {
             core2.warning(`Cannot remove team '${slug}': Permission denied. The team might be protected.`);
           } else {
             throw err;
@@ -29021,44 +29053,52 @@ async function syncTeams(configPath, dryRun, org) {
     }
   }
 }
-if (require.main === module) {
+function parseCliArgs(args) {
+  const result = {};
+  for (let i = 0; i < args.length; i++) {
+    const current = args[i];
+    const next = args[i + 1];
+    if (current.startsWith("--")) {
+      if (current.includes("=")) {
+        const [flag, value] = current.split("=");
+        result[flag] = value;
+      } else if (!next || next.startsWith("--")) {
+        result[current] = true;
+      } else {
+        result[current] = next;
+        i++;
+      }
+    }
+  }
+  return result;
+}
+function parseDryRun(value) {
+  return value === true || value === "true" || value === "" || typeof value === "string" && value.toLowerCase() === "true" || typeof value === "string" && value.toLowerCase() === "=true";
+}
+var runEntrypoint = async () => {
   const isGitHubAction = !!import_process.default.env.GITHUB_ACTION;
   let configPath;
   let dryRun;
   let org;
   if (isGitHubAction) {
-    configPath = core2.getInput("config-path") || ".github/teams.yaml";
-    dryRun = core2.getInput("dry-run").toLowerCase() === "true";
-    org = import_process.default.env.GITHUB_ORG || github.context.payload.organization?.login || github.context.repo.owner;
+    org = core2.getInput("org");
     if (!org) {
-      core2.setFailed("\u274C No organization specified. Set GITHUB_ORG or ensure the action is running in an organization context.");
+      org = import_process.default.env.GITHUB_ORG;
+    }
+    if (!org) {
+      org = github.context.payload.organization?.login || github.context.repo.owner;
+    }
+    if (!org) {
+      core2.setFailed("\u274C No organization specified. Please provide 'org' input or set GITHUB_ORG environment variable.");
       import_process.default.exit(1);
     }
+    configPath = core2.getInput("config-path") || ".github/teams.yaml";
+    dryRun = core2.getInput("dry-run").toLowerCase() === "true";
   } else {
     const args = import_process.default.argv.slice(2);
-    const parseArgs = () => {
-      const result = {};
-      for (let i = 0; i < args.length; i++) {
-        const current = args[i];
-        const next = args[i + 1];
-        if (current.startsWith("--")) {
-          if (current.includes("=")) {
-            const [flag, value] = current.split("=");
-            result[flag] = value;
-          } else if (!next || next.startsWith("--")) {
-            result[current] = true;
-          } else {
-            result[current] = next;
-            i++;
-          }
-        }
-      }
-      return result;
-    };
-    const parsed = parseArgs();
+    const parsed = parseCliArgs(args);
     configPath = parsed["--config"] || ".github/teams.yaml";
-    const dryRunValue = parsed["--dry-run"];
-    dryRun = dryRunValue === true || dryRunValue === "true" || dryRunValue === "" || typeof dryRunValue === "string" && dryRunValue.toLowerCase() === "true" || typeof dryRunValue === "string" && dryRunValue.toLowerCase() === "=true";
+    dryRun = parseDryRun(parsed["--dry-run"]);
     org = parsed["--org"] || import_process.default.env.GITHUB_ORG;
   }
   if (!org) {
@@ -29066,10 +29106,21 @@ if (require.main === module) {
     import_process.default.exit(1);
   }
   core2.info(`\u{1F9EA} dryRun = ${dryRun}`);
-  syncTeams(configPath, dryRun, org).catch((err) => core2.setFailed(err.message));
+  try {
+    await syncTeams(configPath, dryRun, org);
+  } catch (err) {
+    core2.setFailed(err instanceof Error ? err.message : String(err));
+    import_process.default.exit(1);
+  }
+};
+if (require.main === module) {
+  runEntrypoint();
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  parseCliArgs,
+  parseDryRun,
+  runEntrypoint,
   syncTeams
 });
 /*! Bundled license information:

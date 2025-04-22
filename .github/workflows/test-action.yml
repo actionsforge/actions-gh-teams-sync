@@ -1,0 +1,89 @@
+name: Test Team Sync Action
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: 'GitHub organization to test with'
+        required: true
+        default: 'test-org'
+      config-path:
+        description: 'Path to teams configuration file'
+        required: true
+        default: '.github/teams.yml'
+      dry-run:
+        description: 'Run in dry-run mode (no changes made)'
+        required: false
+        type: boolean
+        default: true
+      test-mode:
+        description: 'Test mode (basic|full)'
+        required: false
+        default: 'basic'
+        type: choice
+        options:
+          - basic
+          - full
+
+jobs:
+  test-action:
+    name: Test Team Sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create test configuration
+        if: inputs.test-mode == 'basic'
+        run: |
+          cat > .github/teams.yml <<EOL
+          teams:
+            - name: test-team
+              description: Test team for action testing
+              privacy: closed
+              roles:
+                - username: test-user
+                  role: member
+          EOL
+
+      - name: Create full test configuration
+        if: inputs.test-mode == 'full'
+        run: |
+          cat > .github/teams.yml <<EOL
+          teams:
+            - name: engineering
+              description: Engineering team
+              privacy: closed
+              roles:
+                - username: test-user
+                  role: maintainer
+            - name: design
+              description: Design team
+              privacy: secret
+              parent: engineering
+              roles:
+                - username: test-designer
+                  role: member
+            - name: security
+              description: Security team
+              privacy: secret
+              roles:
+                - username: test-security
+                  role: maintainer
+          EOL
+
+      - name: Test action
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          org: ${{ inputs.org }}
+          config-path: ${{ inputs.config-path }}
+          dry-run: ${{ inputs.dry-run }}
+
+      - name: Verify test results
+        run: |
+          echo "✅ Action test completed"
+          echo "Organization: ${{ inputs.org }}"
+          echo "Config path: ${{ inputs.config-path }}"
+          echo "Dry run: ${{ inputs.dry-run }}"
+          echo "Test mode: ${{ inputs.test-mode }}"

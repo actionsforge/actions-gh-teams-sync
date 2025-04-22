@@ -1,9 +1,16 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import yaml from "js-yaml";
 import { Octokit } from "@octokit/rest";
 import process from "process";
+
+export type SyncTeamsModule = {
+  syncTeams: (configPath: string, dryRun: boolean, org: string) => Promise<void>;
+  parseCliArgs: (args: string[]) => Record<string, string | boolean>;
+  parseDryRun: (value: string | boolean | undefined) => boolean;
+  runEntrypoint: () => Promise<void>;
+};
 
 type TeamRole = {
   username: string;
@@ -23,19 +30,46 @@ type TeamsConfig = {
   teams: TeamSpec[];
 };
 
-export async function syncTeams(configPath: string, dryRun: boolean, org: string) {
+function getErrorStatus(err: unknown): number | undefined {
+  if (err && typeof err === "object" && "status" in err) {
+    return (err as { status: number }).status;
+  }
+  return undefined;
+}
+
+async function verifyTokenPermissions(octokit: Octokit, org: string): Promise<void> {
+  try {
+    await octokit.orgs.get({ org });
+  } catch (err) {
+    if (getErrorStatus(err) === 404) {
+      throw new Error(`Organization '${org}' not found or token lacks access`);
+    }
+    if (getErrorStatus(err) === 403) {
+      throw new Error('Token lacks required permissions. Please ensure it has admin:org scope.');
+    }
+    throw err;
+  }
+}
+
+export async function syncTeams(configPath: string, dryRun: boolean, org: string): Promise<void> {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error("Missing GITHUB_TOKEN");
 
   const octokit = new Octokit({ auth: token });
 
+  // Verify token permissions before proceeding
+  await verifyTokenPermissions(octokit, org);
+
   core.info(`📄 Using config: ${configPath}`);
-  if (dryRun) core.info("🚫 Dry-run mode enabled. No changes will be made.");
+  core.info(`🚫 Dry-run mode: ${dryRun}`);
   core.info(`🏛 Operating in org: ${org}`);
+
+  if (!existsSync(configPath)) {
+    throw new Error(`Config file not found at: ${configPath}`);
+  }
 
   const config = yaml.load(readFileSync(configPath, "utf8")) as TeamsConfig;
 
-  // Get all existing teams
   const existingTeams = new Map<string, number>();
   for await (const response of octokit.paginate.iterator(octokit.teams.list, {
     org,
@@ -57,9 +91,13 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
     let exists = true;
     try {
       await octokit.teams.getByName({ org, team_slug: slug });
-    } catch (err: any) {
-      if (err.status === 404) exists = false;
-      else throw err;
+    } catch (err: unknown) {
+      const status = getErrorStatus(err);
+      if (status === 404) {
+        exists = false;
+      } else {
+        throw err;
+      }
     }
 
     if (!exists) {
@@ -73,6 +111,7 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
           description: team.description,
           privacy: team.privacy || "closed",
           parent_team_id: team.parent_team_id || undefined,
+          create_default_maintainer: team.create_default_maintainer || false,
         });
       }
     } else {
@@ -127,7 +166,7 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
   }
 
   // Remove teams that are no longer in the config
-  for (const [slug, teamId] of existingTeams) {
+  for (const [slug] of existingTeams) {
     if (!teamsToKeep.has(slug)) {
       if (dryRun) {
         core.info(`[DRY-RUN] Would remove team '${slug}'`);
@@ -138,8 +177,9 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
             org,
             team_slug: slug,
           });
-        } catch (err: any) {
-          if (err.status === 403) {
+        } catch (err: unknown) {
+          const status = getErrorStatus(err);
+          if (status === 403) {
             core.warning(`Cannot remove team '${slug}': Permission denied. The team might be protected.`);
           } else {
             throw err;
@@ -150,8 +190,36 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
   }
 }
 
-// CLI & GitHub Action entrypoint
-if (require.main === module) {
+export function parseCliArgs(args: string[]): Record<string, string | boolean> {
+  const result: Record<string, string | boolean> = {};
+  for (let i = 0; i < args.length; i++) {
+    const current = args[i];
+    const next = args[i + 1];
+
+    if (current.startsWith("--")) {
+      if (current.includes("=")) {
+        const [flag, value] = current.split("=");
+        result[flag] = value;
+      } else if (!next || next.startsWith("--")) {
+        result[current] = true;
+      } else {
+        result[current] = next;
+        i++;
+      }
+    }
+  }
+  return result;
+}
+
+export function parseDryRun(value: string | boolean | undefined): boolean {
+  return value === true ||
+         value === "true" ||
+         value === "" ||
+         (typeof value === "string" && value.toLowerCase() === "true") ||
+         (typeof value === "string" && value.toLowerCase() === "=true");
+}
+
+export const runEntrypoint = async (): Promise<void> => {
   const isGitHubAction = !!process.env.GITHUB_ACTION;
 
   let configPath: string;
@@ -159,51 +227,32 @@ if (require.main === module) {
   let org: string | undefined;
 
   if (isGitHubAction) {
-    configPath = core.getInput("config-path") || ".github/teams.yaml";
-    dryRun = core.getInput("dry-run").toLowerCase() === "true";
+    // First try explicit input
+    org = core.getInput("org");
 
-    // Get organization from various sources
-    org = process.env.GITHUB_ORG ||
-         github.context.payload.organization?.login ||
-         github.context.repo.owner;
+    // Then try environment
+    if (!org) {
+      org = process.env.GITHUB_ORG;
+    }
+
+    // Finally try context
+    if (!org) {
+      org = github.context.payload.organization?.login || github.context.repo.owner;
+    }
 
     if (!org) {
-      core.setFailed("❌ No organization specified. Set GITHUB_ORG or ensure the action is running in an organization context.");
+      core.setFailed("❌ No organization specified. Please provide 'org' input or set GITHUB_ORG environment variable.");
       process.exit(1);
     }
+
+    configPath = core.getInput("config-path") || ".github/teams.yaml";
+    dryRun = core.getInput("dry-run").toLowerCase() === "true";
   } else {
     const args = process.argv.slice(2);
-
-    const parseArgs = (): Record<string, string | boolean> => {
-      const result: Record<string, string | boolean> = {};
-      for (let i = 0; i < args.length; i++) {
-        const current = args[i];
-        const next = args[i + 1];
-
-        if (current.startsWith("--")) {
-          if (current.includes("=")) {
-            const [flag, value] = current.split("=");
-            result[flag] = value;
-          } else if (!next || next.startsWith("--")) {
-            result[current] = true;
-          } else {
-            result[current] = next;
-            i++;
-          }
-        }
-      }
-      return result;
-    };
-
-    const parsed = parseArgs();
+    const parsed = parseCliArgs(args);
 
     configPath = (parsed["--config"] as string) || ".github/teams.yaml";
-    const dryRunValue = parsed["--dry-run"];
-    dryRun = dryRunValue === true ||
-             dryRunValue === "true" ||
-             dryRunValue === "" ||
-             (typeof dryRunValue === "string" && dryRunValue.toLowerCase() === "true") ||
-             (typeof dryRunValue === "string" && dryRunValue.toLowerCase() === "=true");
+    dryRun = parseDryRun(parsed["--dry-run"]);
     org = (parsed["--org"] as string) || process.env.GITHUB_ORG;
   }
 
@@ -213,5 +262,14 @@ if (require.main === module) {
   }
 
   core.info(`🧪 dryRun = ${dryRun}`);
-  syncTeams(configPath, dryRun, org).catch(err => core.setFailed(err.message));
+  try {
+    await syncTeams(configPath, dryRun, org);
+  } catch (err) {
+    core.setFailed(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+};
+
+if (require.main === module) {
+  runEntrypoint();
 }

@@ -1,121 +1,78 @@
-name: Sync GitHub Teams
+name: Sync Teams
 
 on:
   workflow_dispatch:
     inputs:
-      dry-run:
-        description: "Simulate without making changes"
-        required: false
-        default: false
-        type: boolean
+      org:
+        description: 'Organization name'
+        required: true
+        type: string
       config-path:
-        description: "Path to the teams YAML file"
+        description: 'Path to teams config file'
         required: false
-        default: ".github/teams.yaml"
-
+        default: '.github/teams.yaml'
+        type: string
+      dry-run:
+        description: 'Run in dry-run mode'
+        required: false
+        default: 'false'
+        type: boolean
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
   push:
     branches:
       - main
     paths:
-      - '**/teams.yaml'
-      - 'scripts/**'
-      - '.github/workflows/**'
-      - 'package.json'
-      - 'tsconfig.json'
-
+      - '.github/teams.yaml'
+      - '.github/workflows/sync-teams.yml'
+      - 'scripts/sync-teams.ts'
   pull_request:
     branches:
       - main
     paths:
-      - '**/teams.yaml'
-      - 'scripts/**'
-      - '.github/workflows/**'
-      - 'package.json'
-      - 'tsconfig.json'
+      - '.github/teams.yaml'
+      - '.github/workflows/sync-teams.yml'
+      - 'scripts/sync-teams.ts'
+
+permissions:
+  contents: read
+  id-token: write
+  organization: write
 
 jobs:
   validate:
-    name: Validate configuration
+    name: Validate
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🛠 Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: 📦 Install dependencies
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
         run: npm ci
-
-      - name: 🔍 Lint TypeScript
-        run: npm run lint
-
-      - name: 🧪 Run tests
+      - name: Run tests
         run: npm test
-
-      - name: 🔒 Security audit
+      - name: Run lint
+        run: npm run lint
+      - name: Security audit
         run: npm audit
 
-      - name: 📝 Validate teams config
-        run: |
-          if [ ! -f "${{ github.event.inputs.config-path || '.github/teams.yaml' }}" ]; then
-            echo "❌ Teams config file not found"
-            exit 1
-          fi
-          node -e "
-            const yaml = require('js-yaml');
-            const fs = require('fs');
-            const config = yaml.load(fs.readFileSync('${{ github.event.inputs.config-path || '.github/teams.yaml' }}', 'utf8'));
-            if (!config.teams || !Array.isArray(config.teams)) {
-              console.error('❌ Invalid teams config: teams must be an array');
-              process.exit(1);
-            }
-            for (const team of config.teams) {
-              if (!team.name) {
-                console.error('❌ Invalid team config: name is required');
-                process.exit(1);
-              }
-              if (team.roles && !Array.isArray(team.roles)) {
-                console.error('❌ Invalid team config: roles must be an array');
-                process.exit(1);
-              }
-            }
-          "
-
   sync:
-    name: Run team sync script
+    name: Sync Teams
     needs: validate
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      organization: write
-      id-token: write
-
     steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🛠 Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-
-      - name: 📦 Install dependencies
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
         run: npm ci
-
-      - name: 🧱 Ensure action is built
-        run: |
-          if [ ! -f dist/sync-teams.js ]; then
-            echo "❌ dist/sync-teams.js not found. Did you forget to build?"
-            exit 1
-          fi
-
-      - name: 🔁 Execute team sync
-        run: |
-          node dist/sync-teams.js \
-            --config "${{ github.event.inputs.config-path || '.github/teams.yaml' }}" \
-            --dry-run "${{ github.event.inputs.dry-run }}"
+      - name: Build action
+        run: npm run build
+      - name: Run team sync
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node dist/scripts/sync-teams.js --config=${{ github.event.inputs.config-path || '.github/teams.yaml' }} --dry-run=${{ github.event.inputs.dry-run || 'false' }} --org=${{ github.event.inputs.org || github.repository_owner }}
