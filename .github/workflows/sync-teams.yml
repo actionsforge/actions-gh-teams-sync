@@ -36,8 +36,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  organization: write
 
 jobs:
   validate:
@@ -62,6 +60,9 @@ jobs:
     name: Sync Teams
     needs: validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      admin-org: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -75,4 +76,4 @@ jobs:
       - name: Run team sync
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node dist/scripts/sync-teams.js --config=${{ github.event.inputs.config-path || '.github/teams.yaml' }} --dry-run=${{ github.event.inputs.dry-run || 'false' }} --org=${{ github.event.inputs.org || github.repository_owner }}
+        run: node dist/sync-teams.js --config=${{ github.event.inputs.config-path || '.github/teams.yaml' }} --dry-run=${{ github.event.inputs.dry-run || 'false' }} --org=${{ github.event.inputs.org || github.repository_owner }}
