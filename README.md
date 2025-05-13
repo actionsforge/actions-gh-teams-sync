@@ -44,12 +44,14 @@ Sync your GitHub organization teams from a declarative YAML configuration using 
 ```yaml
 # .github/teams.yaml
 teams:
-  - name: platform-team
-    description: Platform engineers responsible for CI/CD and infrastructure
-    privacy: closed
-    roles:
-      - username: johnaaj
-        role: maintainer
+  - name: platform-team                # Required: Team name (will be converted to slug)
+    description: Platform engineers    # Optional: Team description
+    privacy: closed                   # Optional: Team privacy ('closed' or 'secret', defaults to 'closed')
+    parent_team_id: 123              # Optional: ID of parent team for nested teams
+    create_default_maintainer: false  # Optional: Whether to create default maintainer (defaults to false)
+    roles:                           # Optional: List of team members and their roles
+      - username: john            # Required: GitHub username
+        role: maintainer             # Required: Role ('member' or 'maintainer')
       - username: alice
         role: member
       - username: bob
@@ -57,13 +59,31 @@ teams:
 
   - name: data-team
     description: Data engineering and analytics
-    privacy: secret
+    privacy: secret                  # 'secret' teams are only visible to team members
     roles:
       - username: data-lead
         role: maintainer
       - username: analyst1
         role: member
 ```
+
+### Team Configuration Parameters
+
+| Parameter | Required | Description | Valid Values | Default |
+|-----------|----------|-------------|--------------|---------|
+| `name` | Yes | Team name | Any string | - |
+| `description` | No | Team description | Any string | - |
+| `privacy` | No | Team visibility | `closed` or `secret` | `closed` |
+| `parent_team_id` | No | ID of parent team | Number | - |
+| `create_default_maintainer` | No | Create default maintainer | `true` or `false` | `false` |
+| `roles` | No | Team members and roles | Array of role objects | - |
+
+### Role Configuration Parameters
+
+| Parameter | Required | Description | Valid Values |
+|-----------|----------|-------------|--------------|
+| `username` | Yes | GitHub username | Valid GitHub username |
+| `role` | Yes | Team role | `member` or `maintainer` |
 
 ---
 
