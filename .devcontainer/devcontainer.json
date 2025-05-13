@@ -43,7 +43,7 @@
       }
     }
   },
-  "postCreateCommand": ".devcontainer/scripts/postcreate.sh",
+  "postCreateCommand": ".devcontainer/scripts/postCreate.sh",
   "runArgs": ["--privileged"],
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
