@@ -70,6 +70,9 @@ jobs:
               roles:
                 - username: test-security
                   role: maintainer
+              repositories:
+                - name: cicd
+                  permission: pull
           EOL
 
       - name: Test action
