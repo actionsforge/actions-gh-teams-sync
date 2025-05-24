@@ -17,6 +17,11 @@ type TeamRole = {
   role: "member" | "maintainer";
 };
 
+type RepositoryAccess = {
+  name: string;
+  permission: "pull" | "triage" | "push" | "maintain" | "admin";
+};
+
 type TeamSpec = {
   name: string;
   description?: string;
@@ -24,6 +29,7 @@ type TeamSpec = {
   parent_team_id?: number | null;
   create_default_maintainer?: boolean;
   roles?: TeamRole[];
+  repositories?: RepositoryAccess[];
 };
 
 type TeamsConfig = {
@@ -35,6 +41,18 @@ function getErrorStatus(err: unknown): number | undefined {
     return (err as { status: number }).status;
   }
   return undefined;
+}
+
+function getEffectivePermission(repo: { permissions?: { admin?: boolean; maintain?: boolean; push?: boolean; triage?: boolean; pull?: boolean } }): string {
+  if (!repo.permissions) {
+    return 'none';
+  }
+  if (repo.permissions.admin) return 'admin';
+  if (repo.permissions.maintain) return 'maintain';
+  if (repo.permissions.push) return 'push';
+  if (repo.permissions.triage) return 'triage';
+  if (repo.permissions.pull) return 'pull';
+  return 'none';
 }
 
 async function verifyTokenPermissions(octokit: Octokit, org: string): Promise<void> {
@@ -57,7 +75,6 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
 
   const octokit = new Octokit({ auth: token });
 
-  // Verify token permissions before proceeding
   await verifyTokenPermissions(octokit, org);
 
   core.info(`📄 Using config: ${configPath}`);
@@ -73,20 +90,34 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
   const existingTeams = new Map<string, number>();
   for await (const response of octokit.paginate.iterator(octokit.teams.list, {
     org,
-    per_page: 100,
+    per_page: 100
   })) {
     for (const team of response.data) {
       existingTeams.set(team.slug, team.id);
     }
   }
 
-  // Track teams that should exist
   const teamsToKeep = new Set<string>();
 
   for (const team of config.teams) {
     const slug = team.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     teamsToKeep.add(slug);
     core.info(`\n=== Syncing team: ${team.name} ===`);
+
+    // Validate privacy
+    if (team.privacy && team.privacy !== 'closed' && team.privacy !== 'secret') {
+      throw new Error(`Invalid privacy setting for team '${team.name}': ${team.privacy}`);
+    }
+
+    // Validate repository permissions
+    const validPermissions = new Set(['pull', 'triage', 'push', 'maintain', 'admin']);
+    for (const repo of team.repositories || []) {
+      if (!validPermissions.has(repo.permission)) {
+        throw new Error(
+          `Invalid permission '${repo.permission}' for repo '${repo.name}' in team '${team.name}'. Valid values: pull, triage, push, maintain, admin.`
+        );
+      }
+    }
 
     let exists = true;
     try {
@@ -103,7 +134,6 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
     if (!exists) {
       if (dryRun) {
         core.info(`[DRY-RUN] Would create team '${team.name}'`);
-        // In dry-run mode, if team doesn't exist, skip member operations
         if (team.roles && team.roles.length > 0) {
           for (const { username, role } of team.roles) {
             core.info(`[DRY-RUN] Would add ${role} '${username}' to new team`);
@@ -125,9 +155,7 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
       core.info(`Team '${team.name}' already exists`);
     }
 
-    // Only proceed with member operations if team exists or we're not in dry-run mode
     if (exists || !dryRun) {
-      // Get current team members
       const currentMembers = new Set<string>();
       try {
         for await (const response of octokit.paginate.iterator(octokit.teams.listMembersInOrg, {
@@ -140,7 +168,6 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
           }
         }
 
-        // Track members that should be in the team
         const membersToKeep = new Set<string>();
 
         for (const { username, role } of team.roles || []) {
@@ -158,7 +185,6 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
           }
         }
 
-        // Remove members that are no longer in the config
         for (const member of currentMembers) {
           if (!membersToKeep.has(member)) {
             if (dryRun) {
@@ -176,16 +202,68 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
       } catch (err: unknown) {
         const status = getErrorStatus(err);
         if (status === 404 && dryRun) {
-          // In dry-run mode, ignore 404 errors when listing members
           core.info(`[DRY-RUN] Team does not exist yet, skipping member operations`);
         } else {
           throw err;
         }
       }
+
+      const desiredRepos = new Map((team.repositories ?? []).map(r => [r.name, r.permission]));
+      const currentRepos = new Map<string, string>();
+
+      for await (const response of octokit.paginate.iterator(octokit.teams.listReposInOrg, {
+        org,
+        team_slug: slug,
+        per_page: 100,
+      })) {
+        for (const repo of response.data) {
+          currentRepos.set(repo.name, getEffectivePermission(repo));
+        }
+      }
+
+      // Track changes
+      const seen = new Set<string>();
+
+      for (const [repoName, desiredPermission] of desiredRepos) {
+        seen.add(repoName);
+        const currentPermission = currentRepos.get(repoName);
+
+        if (currentPermission === desiredPermission) {
+          core.info(`✅ Repo '${repoName}' permission is up to date with '${desiredPermission}'`);
+        } else {
+          if (dryRun) {
+            core.info(`🆕 [DRY-RUN] Would set permission '${desiredPermission}' for repo '${repoName}'`);
+          } else {
+            core.info(`🆕 Setting permission '${desiredPermission}' for repo '${repoName}'`);
+            await octokit.teams.addOrUpdateRepoPermissionsInOrg({
+              org,
+              team_slug: slug,
+              owner: org,
+              repo: repoName,
+              permission: desiredPermission
+            });
+          }
+        }
+      }
+
+      for (const [repoName] of currentRepos) {
+        if (!seen.has(repoName)) {
+          if (dryRun) {
+            core.info(`❌ [DRY-RUN] Would remove access to repo '${repoName}'`);
+          } else {
+            core.info(`❌ Removing access to repo '${repoName}'`);
+            await octokit.teams.removeRepoInOrg({
+              org,
+              team_slug: slug,
+              owner: org,
+              repo: repoName
+            });
+          }
+        }
+      }
     }
   }
 
-  // Remove teams that are no longer in the config
   for (const [slug] of existingTeams) {
     if (!teamsToKeep.has(slug)) {
       if (dryRun) {
@@ -195,7 +273,7 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
           core.info(`Removing team '${slug}'`);
           await octokit.teams.deleteInOrg({
             org,
-            team_slug: slug,
+            team_slug: slug
           });
         } catch (err: unknown) {
           const status = getErrorStatus(err);
@@ -247,30 +325,22 @@ export const runEntrypoint = async (): Promise<void> => {
   let org: string | undefined;
 
   if (isGitHubAction) {
-    // First try explicit input
     org = core.getInput("org");
-
-    // Then try environment
     if (!org) {
       org = process.env.GITHUB_ORG;
     }
-
-    // Finally try context
     if (!org) {
       org = github.context.payload.organization?.login || github.context.repo.owner;
     }
-
     if (!org) {
       core.setFailed("❌ No organization specified. Please provide 'org' input or set GITHUB_ORG environment variable.");
       process.exit(1);
     }
-
     configPath = core.getInput("config-path") || ".github/teams.yaml";
     dryRun = core.getInput("dry-run").toLowerCase() === "true";
   } else {
     const args = process.argv.slice(2);
     const parsed = parseCliArgs(args);
-
     configPath = (parsed["--config"] as string) || ".github/teams.yaml";
     dryRun = parseDryRun(parsed["--dry-run"]);
     org = (parsed["--org"] as string) || process.env.GITHUB_ORG;
@@ -281,7 +351,6 @@ export const runEntrypoint = async (): Promise<void> => {
     process.exit(1);
   }
 
-  core.info(`🧪 dryRun = ${dryRun}`);
   try {
     await syncTeams(configPath, dryRun, org);
   } catch (err) {

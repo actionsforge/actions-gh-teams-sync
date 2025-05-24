@@ -28923,6 +28923,17 @@ function getErrorStatus(err) {
   }
   return void 0;
 }
+function getEffectivePermission(repo) {
+  if (!repo.permissions) {
+    return "none";
+  }
+  if (repo.permissions.admin) return "admin";
+  if (repo.permissions.maintain) return "maintain";
+  if (repo.permissions.push) return "push";
+  if (repo.permissions.triage) return "triage";
+  if (repo.permissions.pull) return "pull";
+  return "none";
+}
 async function verifyTokenPermissions(octokit, org) {
   try {
     await octokit.orgs.get({ org });
@@ -28963,6 +28974,17 @@ async function syncTeams(configPath, dryRun, org) {
     teamsToKeep.add(slug);
     core2.info(`
 === Syncing team: ${team.name} ===`);
+    if (team.privacy && team.privacy !== "closed" && team.privacy !== "secret") {
+      throw new Error(`Invalid privacy setting for team '${team.name}': ${team.privacy}`);
+    }
+    const validPermissions = /* @__PURE__ */ new Set(["pull", "triage", "push", "maintain", "admin"]);
+    for (const repo of team.repositories || []) {
+      if (!validPermissions.has(repo.permission)) {
+        throw new Error(
+          `Invalid permission '${repo.permission}' for repo '${repo.name}' in team '${team.name}'. Valid values: pull, triage, push, maintain, admin.`
+        );
+      }
+    }
     let exists = true;
     try {
       await octokit.teams.getByName({ org, team_slug: slug });
@@ -29046,6 +29068,53 @@ async function syncTeams(configPath, dryRun, org) {
           throw err;
         }
       }
+      const desiredRepos = new Map((team.repositories ?? []).map((r) => [r.name, r.permission]));
+      const currentRepos = /* @__PURE__ */ new Map();
+      for await (const response of octokit.paginate.iterator(octokit.teams.listReposInOrg, {
+        org,
+        team_slug: slug,
+        per_page: 100
+      })) {
+        for (const repo of response.data) {
+          currentRepos.set(repo.name, getEffectivePermission(repo));
+        }
+      }
+      const seen = /* @__PURE__ */ new Set();
+      for (const [repoName, desiredPermission] of desiredRepos) {
+        seen.add(repoName);
+        const currentPermission = currentRepos.get(repoName);
+        if (currentPermission === desiredPermission) {
+          core2.info(`\u2705 Repo '${repoName}' permission is up to date with '${desiredPermission}'`);
+        } else {
+          if (dryRun) {
+            core2.info(`\u{1F195} [DRY-RUN] Would set permission '${desiredPermission}' for repo '${repoName}'`);
+          } else {
+            core2.info(`\u{1F195} Setting permission '${desiredPermission}' for repo '${repoName}'`);
+            await octokit.teams.addOrUpdateRepoPermissionsInOrg({
+              org,
+              team_slug: slug,
+              owner: org,
+              repo: repoName,
+              permission: desiredPermission
+            });
+          }
+        }
+      }
+      for (const [repoName] of currentRepos) {
+        if (!seen.has(repoName)) {
+          if (dryRun) {
+            core2.info(`\u274C [DRY-RUN] Would remove access to repo '${repoName}'`);
+          } else {
+            core2.info(`\u274C Removing access to repo '${repoName}'`);
+            await octokit.teams.removeRepoInOrg({
+              org,
+              team_slug: slug,
+              owner: org,
+              repo: repoName
+            });
+          }
+        }
+      }
     }
   }
   for (const [slug] of existingTeams) {
@@ -29123,7 +29192,6 @@ var runEntrypoint = async () => {
     core2.setFailed("\u274C No organization specified. Set --org or GITHUB_ORG.");
     import_process.default.exit(1);
   }
-  core2.info(`\u{1F9EA} dryRun = ${dryRun}`);
   try {
     await syncTeams(configPath, dryRun, org);
   } catch (err) {

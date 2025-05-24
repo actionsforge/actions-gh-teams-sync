@@ -27,13 +27,20 @@ const mockOctokit = {
     removeMembershipForUserInOrg: vi.fn().mockResolvedValue({ data: {} }),
     listMembersInOrg: vi.fn().mockResolvedValue({ data: [] }),
     list: vi.fn().mockResolvedValue({ data: [] }),
+    listReposInOrg: vi.fn().mockResolvedValue({ data: [] }),
+    addOrUpdateRepoPermissionsInOrg: vi.fn().mockResolvedValue({ data: {} }),
+    removeRepoInOrg: vi.fn().mockResolvedValue({ data: {} }),
   },
   paginate: {
     iterator: vi.fn().mockImplementation((fn, params) => {
       return {
         [Symbol.asyncIterator]: async function* (): AsyncGenerator<{ data: unknown[] }> {
           const response = await fn(params);
-          yield { data: response.data || [] };
+          if (response && response.data) {
+            yield { data: response.data };
+          } else {
+            yield { data: [] };
+          }
         }
       };
     })
@@ -173,7 +180,11 @@ describe('syncTeams', () => {
       return {
         [Symbol.asyncIterator]: async function* (): AsyncGenerator<{ data: unknown[] }> {
           const response = await fn(params);
-          yield { data: response.data || [] };
+          if (response && response.data) {
+            yield { data: response.data };
+          } else {
+            yield { data: [] };
+          }
         }
       };
     });
@@ -209,25 +220,36 @@ describe('syncTeams', () => {
     });
     mockOctokit.teams.deleteInOrg.mockRejectedValueOnce({ status: 403 });
 
+    // Mock the paginate iterator for this specific test
+    mockOctokit.paginate.iterator.mockImplementationOnce(() => {
+      return {
+        [Symbol.asyncIterator]: async function* (): AsyncGenerator<{ data: unknown[] }> {
+          yield { data: [{ slug: 'protected-team', id: 1 }] };
+        }
+      };
+    });
+
     writeFileSync(tempConfigPath, 'teams: []');
 
     await expect(syncTeams(tempConfigPath, false, testOrg)).resolves.not.toThrow();
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining('Cannot remove team \'protected-team\': Permission denied')
+    );
   });
 
   it('should handle pagination for large teams', async (): Promise<void> => {
     const largeTeam = Array(150).fill({ login: 'member' });
     mockOctokit.teams.getByName.mockResolvedValueOnce({ data: { id: 1 } });
 
-    mockOctokit.paginate.iterator.mockImplementationOnce(
-      (_fn: (params: Record<string, unknown>) => Promise<{ data: unknown[] }>, _params: Record<string, unknown>) => {
-        return {
-          [Symbol.asyncIterator]: async function* (): AsyncGenerator<{ data: unknown[] }> {
-            yield { data: largeTeam.slice(0, 100) };
-            yield { data: largeTeam.slice(100) };
-          }
-        };
-      }
-    );
+    // Mock the paginate iterator for this specific test
+    mockOctokit.paginate.iterator.mockImplementationOnce(() => {
+      return {
+        [Symbol.asyncIterator]: async function* (): AsyncGenerator<{ data: unknown[] }> {
+          yield { data: largeTeam.slice(0, 100) };
+          yield { data: largeTeam.slice(100) };
+        }
+      };
+    });
 
     writeFileSync(tempConfigPath, `teams:
       - name: large-team

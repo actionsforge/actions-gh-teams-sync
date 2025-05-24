@@ -12,6 +12,7 @@ Sync your GitHub organization teams from a declarative YAML configuration using 
 
 - Syncs teams by name, description, and privacy
 - Assigns maintainers and members
+- Manages repository access and permissions
 - Supports dry-run mode for safe testing
 - Usable as a CLI or a reusable GitHub Action
 
@@ -56,6 +57,11 @@ teams:
         role: member
       - username: bob
         role: member
+    repositories:                    # Optional: List of repositories and their permissions
+      - name: platform-core         # Required: Repository name
+        permission: admin           # Required: Permission level
+      - name: platform-tools
+        permission: push
 
   - name: data-team
     description: Data engineering and analytics
@@ -65,6 +71,11 @@ teams:
         role: maintainer
       - username: analyst1
         role: member
+    repositories:
+      - name: data-pipeline
+        permission: admin
+      - name: analytics-dashboard
+        permission: push
 ```
 
 ### Team Configuration Parameters
@@ -77,6 +88,7 @@ teams:
 | `parent_team_id` | No | ID of parent team | Number | - |
 | `create_default_maintainer` | No | Create default maintainer | `true` or `false` | `false` |
 | `roles` | No | Team members and roles | Array of role objects | - |
+| `repositories` | No | Repository access and permissions | Array of repository objects | - |
 
 ### Role Configuration Parameters
 
@@ -84,6 +96,13 @@ teams:
 |-----------|----------|-------------|--------------|
 | `username` | Yes | GitHub username | Valid GitHub username |
 | `role` | Yes | Team role | `member` or `maintainer` |
+
+### Repository Configuration Parameters
+
+| Parameter | Required | Description | Valid Values |
+|-----------|----------|-------------|--------------|
+| `name` | Yes | Repository name | Valid repository name in the organization |
+| `permission` | Yes | Access level | `pull`, `triage`, `push`, `maintain`, or `admin` |
 
 ---
 
