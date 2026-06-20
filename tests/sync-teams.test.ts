@@ -48,8 +48,12 @@ const mockOctokit = {
 };
 
 vi.mock("@octokit/rest", () => {
+  function MockOctokit(): typeof mockOctokit {
+    return mockOctokit;
+  }
+
   return {
-    Octokit: vi.fn().mockImplementation(() => mockOctokit),
+    Octokit: vi.fn(MockOctokit),
   };
 });
 
@@ -206,7 +210,7 @@ describe('syncTeams', () => {
     // Clean up temp file
     try {
       unlinkSync(tempConfigPath);
-    } catch (err) {
+    } catch {
       // Ignore error if file doesn't exist
     }
 
