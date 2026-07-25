@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@types/istanbul-lib-coverage": "^2.0.6",
-    "@types/jest": "^29.5.14",
+    "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.15.31",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
