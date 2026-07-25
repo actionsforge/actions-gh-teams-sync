@@ -60,10 +60,15 @@ async function verifyTokenPermissions(octokit: Octokit, org: string): Promise<vo
     await octokit.orgs.get({ org });
   } catch (err) {
     if (getErrorStatus(err) === 404) {
-      throw new Error(`Organization '${org}' not found or token lacks access`);
+      throw new Error(`Organization '${org}' not found or token lacks access`, {
+        cause: err
+      });
     }
     if (getErrorStatus(err) === 403) {
-      throw new Error('Token lacks required permissions. Please ensure it has admin:org scope.');
+      throw new Error(
+        'Token lacks required permissions. Please ensure it has admin:org scope.',
+        { cause: err }
+      );
     }
     throw err;
   }
