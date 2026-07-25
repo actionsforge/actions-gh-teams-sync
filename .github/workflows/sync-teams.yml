@@ -58,6 +58,8 @@ jobs:
 
   sync:
     name: Sync Teams
+    # Org mutation requires GH_ORG_TOKEN; skip on PRs (validate still runs)
+    if: github.event_name != 'pull_request'
     needs: validate
     runs-on: ubuntu-latest
     steps:
