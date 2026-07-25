@@ -20,7 +20,7 @@
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
     "@octokit/rest": "^22.0.1",
-    "js-yaml": "^4.2.0"
+    "js-yaml": "^4.3.0"
   },
   "devDependencies": {
     "@types/istanbul-lib-coverage": "^2.0.6",
@@ -47,5 +47,10 @@
     "actions"
   ],
   "author": "John Ajera",
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "js-yaml": "^4.3.0",
+    "postcss": "8.5.23"
+  }
 }
