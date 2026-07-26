@@ -4,7 +4,7 @@ export default defineConfig({
   entry: ['scripts/sync-teams.ts'],
   format: ['cjs'],
   outDir: 'dist',
-  target: 'node20',
+  target: 'node24',
   clean: true,
   dts: false,
   minify: false,
