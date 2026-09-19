@@ -105,19 +105,17 @@ vi.mock("fs", () => ({
   unlinkSync: vi.fn(),
 }));
 
-// Mock js-yaml
+// Mock js-yaml (named exports; js-yaml 5 has no default export)
 vi.mock("js-yaml", () => ({
-  default: {
-    load: vi.fn().mockReturnValue({
-      teams: [
-        {
-          name: 'secret-team',
-          description: 'A secret team',
-          privacy: 'secret'
-        }
-      ]
-    })
-  }
+  load: vi.fn().mockReturnValue({
+    teams: [
+      {
+        name: 'secret-team',
+        description: 'A secret team',
+        privacy: 'secret'
+      }
+    ]
+  })
 }));
 
 // Import the module after mocks are set up
