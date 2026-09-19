@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { readFileSync, existsSync } from "fs";
-import yaml from "js-yaml";
+import { load } from "js-yaml";
 import { Octokit } from "@octokit/rest";
 import process from "process";
 
@@ -90,7 +90,7 @@ export async function syncTeams(configPath: string, dryRun: boolean, org: string
     throw new Error(`Config file not found at: ${configPath}`);
   }
 
-  const config = yaml.load(readFileSync(configPath, "utf8")) as TeamsConfig;
+  const config = load(readFileSync(configPath, "utf8")) as TeamsConfig;
 
   const existingTeams = new Map<string, number>();
   for await (const response of octokit.paginate.iterator(octokit.teams.list, {
